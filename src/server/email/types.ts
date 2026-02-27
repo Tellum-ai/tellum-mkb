@@ -2,6 +2,8 @@ export interface ParsedAttachment {
   filename: string;
   contentType: string;
   contentBase64: string;
+  /** Set after a successful R2 upload — undefined if the upload was skipped or failed */
+  r2Url?: string;
 }
 
 export interface ParsedEmail {

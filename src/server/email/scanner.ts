@@ -17,7 +17,62 @@ function createImapClient(): ImapFlow {
   });
 }
 
-export async function fetchUnreadEmails(): Promise<ParsedEmail[]> {
+export interface UnreadUidEntry {
+  uid: number;
+  /** IMAP INTERNALDATE — used to sort oldest-first before batching */
+  internalDate: Date;
+}
+
+/**
+ * Lightweight step 1: connect to Gmail and return the UID + internal date of
+ * every unread message without downloading the message bodies.
+ */
+export async function listUnreadUids(): Promise<UnreadUidEntry[]> {
+  const client = createImapClient();
+  await client.connect();
+
+  const entries: UnreadUidEntry[] = [];
+
+  try {
+    await client.mailboxOpen("INBOX");
+
+    const uids = await client.search({ seen: false }, { uid: true });
+
+    if (!uids || uids.length === 0) {
+      console.log("[scanner] No unread emails found.");
+      return [];
+    }
+
+    console.log(`[scanner] Found ${uids.length} unread email(s).`);
+
+    // Fetch only envelope data (internalDate) — no body download yet.
+    for await (const msg of client.fetch(
+      uids,
+      { internalDate: true, uid: true },
+      { uid: true },
+    )) {
+      entries.push({
+        uid: msg.uid,
+        internalDate:
+          msg.internalDate instanceof Date
+            ? msg.internalDate
+            : new Date(msg.internalDate ?? 0),
+      });
+    }
+  } finally {
+    await client.logout();
+  }
+
+  return entries;
+}
+
+/**
+ * Expensive step 2: download and parse the full source of the given UIDs.
+ * Only call this for the small batch we actually intend to process.
+ */
+export async function fetchEmailsByUids(uids: number[]): Promise<ParsedEmail[]> {
+  if (uids.length === 0) return [];
+
   const client = createImapClient();
   await client.connect();
 
@@ -26,22 +81,13 @@ export async function fetchUnreadEmails(): Promise<ParsedEmail[]> {
   try {
     await client.mailboxOpen("INBOX");
 
-    // Fetch all unread UIDs — batching happens at the router level
-    const uids = await client.search({ seen: false }, { uid: true });
-
-    if (uids.length === 0) {
-      console.log("[scanner] No unread emails found.");
-      return [];
-    }
-
-    console.log(`[scanner] Found ${uids.length} unread email(s).`);
-
     for await (const message of client.fetch(
       uids,
       { source: true, uid: true },
-      { uid: true }
+      { uid: true },
     )) {
       try {
+        if (!message.source) continue;
         const parsed = await simpleParser(message.source);
 
         const attachments: ParsedAttachment[] = [];
@@ -69,7 +115,7 @@ export async function fetchUnreadEmails(): Promise<ParsedEmail[]> {
       } catch (err) {
         console.error(
           `[scanner] Failed to parse message UID=${message.uid}:`,
-          err
+          err,
         );
       }
     }

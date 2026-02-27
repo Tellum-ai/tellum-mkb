@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { ImapFlow } from "imapflow";
 
 import { env } from "~/env.js";
@@ -15,11 +15,33 @@ export async function isEmailAlreadyProcessed(
   return existing !== undefined;
 }
 
+/**
+ * Bulk check: given a list of Message-IDs, returns the subset that have
+ * already been recorded in the database. One query instead of N.
+ */
+export async function getAlreadyProcessedIds(
+  gmailMessageIds: string[]
+): Promise<Set<string>> {
+  if (gmailMessageIds.length === 0) return new Set();
+
+  const rows = await db
+    .select({ gmailMessageId: processedEmails.gmailMessageId })
+    .from(processedEmails)
+    .where(inArray(processedEmails.gmailMessageId, gmailMessageIds));
+
+  return new Set(rows.map((r) => r.gmailMessageId));
+}
+
 export async function storeEmailResult(
   email: ParsedEmail,
   result: GeminiExtractionResult
 ): Promise<void> {
   const isInvoice = result !== null;
+
+  // Collect any R2 URLs that were set on the attachments before this call
+  const pdfUrls = email.attachments
+    .map((a) => a.r2Url)
+    .filter((url): url is string => url !== undefined);
 
   await db.transaction(async (tx) => {
     const [insertedEmail] = await tx
@@ -51,12 +73,13 @@ export async function storeEmailResult(
         invoiceDate: inv.invoice_date,
         senderCompany: inv.sender.company,
         totalInclVat: String(inv.totals.total_incl_vat),
+        pdfUrls,
       });
     }
   });
 
   console.log(
-    `[store] Saved message ${email.gmailMessageId} | invoice=${isInvoice}`
+    `[store] Saved message ${email.gmailMessageId} | invoice=${isInvoice} | pdfs=${pdfUrls.length}`
   );
 }
 
