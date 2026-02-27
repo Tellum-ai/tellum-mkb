@@ -2,10 +2,12 @@ import { relations } from "drizzle-orm";
 import {
   boolean,
   index,
+  jsonb,
   pgTable,
   pgTableCreator,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const createTable = pgTableCreator((name) => `pg-drizzle_${name}`);
@@ -91,6 +93,66 @@ export const verification = pgTable("verification", {
   ),
 });
 
+// ---------------------------------------------------------------------------
+// tellum_processed_emails
+// Idempotency table — tracks every Gmail message we have seen to prevent
+// duplicate processing across cron runs.
+// ---------------------------------------------------------------------------
+export const processedEmails = pgTable(
+  "tellum_processed_emails",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    // RFC 2822 Message-ID header — globally unique and stable across mailbox ops
+    gmailMessageId: text("gmail_message_id").notNull().unique(),
+    // IMAP UID — only used for the mark-as-read IMAP call
+    imapUid: text("imap_uid"),
+    subject: text("subject"),
+    fromAddress: text("from_address"),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    processedAt: timestamp("processed_at", { withTimezone: true })
+      .$defaultFn(() => new Date())
+      .notNull(),
+    wasInvoice: text("was_invoice", { enum: ["yes", "no"] }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("processed_emails_msg_id_idx").on(t.gmailMessageId),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// tellum_invoices
+// Stores extracted invoice JSON from Gemini AI plus downstream status.
+// ---------------------------------------------------------------------------
+export const invoices = pgTable("tellum_invoices", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  processedEmailId: text("processed_email_id")
+    .notNull()
+    .references(() => processedEmails.id, { onDelete: "cascade" }),
+  gmailMessageId: text("gmail_message_id").notNull(),
+  // Full structured invoice JSON returned by Gemini
+  invoiceData: jsonb("invoice_data").notNull(),
+  status: text("status", {
+    enum: ["not_processed", "processing", "processed", "error"],
+  })
+    .notNull()
+    .default("not_processed"),
+  // Denormalized scalar fields for fast SQL filtering
+  invoiceNumber: text("invoice_number"),
+  invoiceDate: text("invoice_date"),
+  senderCompany: text("sender_company"),
+  totalInclVat: text("total_incl_vat"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .$defaultFn(() => new Date())
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).$onUpdate(
+    () => new Date()
+  ),
+});
+
 export const userRelations = relations(user, ({ many }) => ({
   account: many(account),
   session: many(session),
@@ -102,4 +164,21 @@ export const accountRelations = relations(account, ({ one }) => ({
 
 export const sessionRelations = relations(session, ({ one }) => ({
   user: one(user, { fields: [session.userId], references: [user.id] }),
+}));
+
+export const processedEmailRelations = relations(
+  processedEmails,
+  ({ one }) => ({
+    invoice: one(invoices, {
+      fields: [processedEmails.id],
+      references: [invoices.processedEmailId],
+    }),
+  })
+);
+
+export const invoiceRelations = relations(invoices, ({ one }) => ({
+  processedEmail: one(processedEmails, {
+    fields: [invoices.processedEmailId],
+    references: [processedEmails.id],
+  }),
 }));
