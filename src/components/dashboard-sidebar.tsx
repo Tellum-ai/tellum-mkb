@@ -47,11 +47,6 @@ const navItems = [
     icon: FileText,
   },
   {
-    title: "Abonnement",
-    href: "/dashboard/billing",
-    icon: CreditCard,
-  },
-  {
     title: "Contacten",
     href: "/dashboard/contacts",
     icon: Users,
@@ -139,6 +134,12 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                 side="top"
                 align="start"
               >
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/billing">
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    Abonnement
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem>
                   <Settings className="mr-2 h-4 w-4" />
                   Instellingen
