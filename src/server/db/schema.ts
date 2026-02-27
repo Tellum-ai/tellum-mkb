@@ -93,6 +93,7 @@ export const verification = pgTable("verification", {
 });
 
 // ── Billing tables ──────────────────────────────────────────────
+
 export const customer = pgTable("customer", (d) => ({
   id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
   userId: d
@@ -173,7 +174,7 @@ export const invoiceUsage = pgTable(
     invoiceCount: d.integer().notNull().default(0),
     updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
   }),
-  (t) => [unique("tellum_invoice_usage_user_month").on(t.userId, t.year, t.month)],
+  (t) => [unique("invoice_usage_user_month").on(t.userId, t.year, t.month)],
 );
 
 // ── Email processing tables ─────────────────────────────────────
