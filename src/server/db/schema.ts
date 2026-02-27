@@ -3,14 +3,12 @@ import {
   boolean,
   index,
   pgTable,
-  pgTableCreator,
   text,
   timestamp,
+  unique,
 } from "drizzle-orm/pg-core";
 
-export const createTable = pgTableCreator((name) => `pg-drizzle_${name}`);
-
-export const posts = createTable(
+export const posts = pgTable(
   "post",
   (d) => ({
     id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
@@ -28,7 +26,7 @@ export const posts = createTable(
   (t) => [
     index("created_by_idx").on(t.createdById),
     index("name_idx").on(t.name),
-  ]
+  ],
 );
 
 export const user = pgTable("user", {
@@ -84,16 +82,106 @@ export const verification = pgTable("verification", {
   value: text("value").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").$defaultFn(
-    () => /* @__PURE__ */ new Date()
+    () => /* @__PURE__ */ new Date(),
   ),
   updatedAt: timestamp("updated_at").$defaultFn(
-    () => /* @__PURE__ */ new Date()
+    () => /* @__PURE__ */ new Date(),
   ),
 });
+
+// ── Billing tables ──────────────────────────────────────────────
+
+export const customer = pgTable("customer", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  userId: d
+    .text()
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  mollieCustomerId: d.text().notNull().unique(),
+  createdAt: d
+    .timestamp({ withTimezone: true })
+    .$defaultFn(() => new Date())
+    .notNull(),
+}));
+
+export const subscription = pgTable(
+  "subscription",
+  (d) => ({
+    id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+    userId: d
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    mollieSubscriptionId: d.text().unique(),
+    mollieCustomerId: d.text().notNull(),
+    plan: d.varchar({ length: 20 }).notNull(), // starter / pro / unlimited
+    billingCycle: d.varchar({ length: 10 }).notNull(), // monthly / yearly
+    status: d.varchar({ length: 30 }).notNull(), // trialing / active / cancelled / suspended / expired
+    trialStartedAt: d.timestamp({ withTimezone: true }),
+    trialEndsAt: d.timestamp({ withTimezone: true }),
+    activatedAt: d.timestamp({ withTimezone: true }),
+    cancelledAt: d.timestamp({ withTimezone: true }),
+    currentPeriodStart: d.timestamp({ withTimezone: true }),
+    currentPeriodEnd: d.timestamp({ withTimezone: true }),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
+  }),
+  (t) => [index("subscription_user_idx").on(t.userId)],
+);
+
+export const payment = pgTable(
+  "payment",
+  (d) => ({
+    id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+    userId: d
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    molliePaymentId: d.text().notNull().unique(),
+    mollieSubscriptionId: d.text(),
+    amount: d.integer().notNull(), // cents
+    currency: d.varchar({ length: 3 }).notNull().default("EUR"),
+    status: d.varchar({ length: 20 }).notNull(), // open/pending/paid/failed/expired/canceled
+    description: d.text(),
+    method: d.varchar({ length: 30 }),
+    sequenceType: d.varchar({ length: 10 }).notNull(), // first / recurring
+    paidAt: d.timestamp({ withTimezone: true }),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => new Date())
+      .notNull(),
+  }),
+  (t) => [index("payment_user_idx").on(t.userId)],
+);
+
+export const invoiceUsage = pgTable(
+  "invoice_usage",
+  (d) => ({
+    id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+    userId: d
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    year: d.integer().notNull(),
+    month: d.integer().notNull(), // 1-12
+    invoiceCount: d.integer().notNull().default(0),
+    updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
+  }),
+  (t) => [unique("invoice_usage_user_month").on(t.userId, t.year, t.month)],
+);
+
+// ── Relations ───────────────────────────────────────────────────
 
 export const userRelations = relations(user, ({ many }) => ({
   account: many(account),
   session: many(session),
+  subscriptions: many(subscription),
+  payments: many(payment),
+  invoiceUsages: many(invoiceUsage),
 }));
 
 export const accountRelations = relations(account, ({ one }) => ({
@@ -102,4 +190,20 @@ export const accountRelations = relations(account, ({ one }) => ({
 
 export const sessionRelations = relations(session, ({ one }) => ({
   user: one(user, { fields: [session.userId], references: [user.id] }),
+}));
+
+export const customerRelations = relations(customer, ({ one }) => ({
+  user: one(user, { fields: [customer.userId], references: [user.id] }),
+}));
+
+export const subscriptionRelations = relations(subscription, ({ one }) => ({
+  user: one(user, { fields: [subscription.userId], references: [user.id] }),
+}));
+
+export const paymentRelations = relations(payment, ({ one }) => ({
+  user: one(user, { fields: [payment.userId], references: [user.id] }),
+}));
+
+export const invoiceUsageRelations = relations(invoiceUsage, ({ one }) => ({
+  user: one(user, { fields: [invoiceUsage.userId], references: [user.id] }),
 }));
