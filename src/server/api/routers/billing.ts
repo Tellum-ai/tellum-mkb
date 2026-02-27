@@ -114,7 +114,7 @@ export const billingRouter = createTRPCRouter({
       }
 
       const webhookUrl = `${env.MOLLIE_WEBHOOK_URL}/api/webhooks/mollie`;
-      const redirectUrl = `${env.BETTER_AUTH_URL}/dashboard/billing?payment=complete`;
+      const redirectUrl = `${env.BETTER_AUTH_URL}/payment/success`;
 
       const firstPayment = await createFirstPayment({
         mollieCustomerId: cust!.mollieCustomerId,

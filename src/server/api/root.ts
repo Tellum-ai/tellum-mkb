@@ -1,6 +1,7 @@
 import { emailRouter } from "~/server/api/routers/email";
 import { postRouter } from "~/server/api/routers/post";
 import { invoiceRouter } from "~/server/api/routers/invoice";
+import { contactRouter } from "~/server/api/routers/contact";
 import { billingRouter } from "~/server/api/routers/billing";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
@@ -12,6 +13,7 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 export const appRouter = createTRPCRouter({
   post: postRouter,
   invoice: invoiceRouter,
+  contact: contactRouter,
   billing: billingRouter,
   email: emailRouter,
 });

@@ -52,7 +52,8 @@ export interface InvoiceTotals {
   total_incl_vat: number;
 }
 
-export type PaymentStatus = "paid" | "unpaid" | "unknown";
+/** Payment status as detected by Gemini from the PDF/email (not the app workflow status) */
+export type GeminiPaymentStatus = "paid" | "unpaid" | "unknown";
 
 export interface InvoiceData {
   invoice_number: string;
@@ -64,7 +65,7 @@ export interface InvoiceData {
   totals: InvoiceTotals;
   payment_reference?: string | null;
   /** Whether the invoice has already been paid, as detected from the PDF/email */
-  payment_status: PaymentStatus;
+  payment_status: GeminiPaymentStatus;
 }
 
 export type GeminiExtractionResult = { invoice: InvoiceData } | null;

@@ -7,10 +7,13 @@ import { Toaster } from "sonner";
 import { TRPCReactProvider } from "~/trpc/react";
 
 export const metadata: Metadata = {
-  title: "Tellum - Je AI financieel medewerker",
+  title: {
+    default: "Tellum - Je AI financieel medewerker",
+    template: "%s | Tellum",
+  },
   description:
     "Tellum is je AI-medewerker voor inkomende facturen. Koppel je inbox en laat AI je facturen herkennen, verwerken en klaarzetten voor betaling.",
-  icons: [{ rel: "icon", url: "/favicon.ico" }],
+  icons: [{ rel: "icon", url: "/icon.svg", type: "image/svg+xml" }],
 };
 
 const attila = localFont({

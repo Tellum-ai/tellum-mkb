@@ -10,7 +10,6 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-
 export const posts = pgTable(
   "post",
   (d) => ({
@@ -177,6 +176,28 @@ export const invoiceUsage = pgTable(
   (t) => [unique("invoice_usage_user_month").on(t.userId, t.year, t.month)],
 );
 
+// ── Contacts table ──────────────────────────────────────────────
+
+export const contacts = pgTable(
+  "contacts",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    email: text("email").notNull(),
+    companyName: text("company_name"),
+    isWhitelisted: boolean("is_whitelisted").notNull().default(false),
+    autoApprove: boolean("auto_approve").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).$onUpdate(
+      () => new Date(),
+    ),
+  },
+  (t) => [uniqueIndex("contacts_email_idx").on(t.email)],
+);
+
 // ── Email processing tables ─────────────────────────────────────
 
 // Idempotency table — tracks every Gmail message we have seen to prevent
@@ -197,9 +218,7 @@ export const processedEmails = pgTable(
       .notNull(),
     wasInvoice: text("was_invoice", { enum: ["yes", "no"] }).notNull(),
   },
-  (t) => [
-    uniqueIndex("processed_emails_msg_id_idx").on(t.gmailMessageId),
-  ],
+  (t) => [uniqueIndex("processed_emails_msg_id_idx").on(t.gmailMessageId)],
 );
 
 // Stores extracted invoice JSON from Gemini AI plus downstream status.
@@ -223,12 +242,15 @@ export const invoices = pgTable("invoices", {
   totalInclVat: text("total_incl_vat"),
   /** R2 URLs of every PDF attachment that was saved for this invoice email */
   pdfUrls: text("pdf_urls").array().default([]),
+  contactId: text("contact_id").references(() => contacts.id, {
+    onDelete: "set null",
+  }),
   /** Moneybird external sales invoice ID, set after successful sync */
   moneybirdId: text("moneybird_id"),
-  /** Payment status extracted from the PDF/email by Gemini */
+  /** Payment status: nieuw → goedgekeurd → ingepland → betaald */
   paymentStatus: text("payment_status", {
-    enum: ["paid", "unpaid", "unknown"],
-  }).default("unknown"),
+    enum: ["nieuw", "goedgekeurd", "ingepland", "betaald"],
+  }).notNull().default("nieuw"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .$defaultFn(() => new Date())
     .notNull(),
@@ -285,4 +307,12 @@ export const invoiceRelations = relations(invoices, ({ one }) => ({
     fields: [invoices.processedEmailId],
     references: [processedEmails.id],
   }),
+  contact: one(contacts, {
+    fields: [invoices.contactId],
+    references: [contacts.id],
+  }),
+}));
+
+export const contactRelations = relations(contacts, ({ many }) => ({
+  invoices: many(invoices),
 }));

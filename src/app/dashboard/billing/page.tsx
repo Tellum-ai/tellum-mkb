@@ -47,7 +47,6 @@ function BillingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isExpired = searchParams.get("expired") === "true";
-  const paymentComplete = searchParams.get("payment") === "complete";
 
   const [showPlanSelector, setShowPlanSelector] = useState(isExpired);
   const [cancelConfirm, setCancelConfirm] = useState(false);
@@ -118,21 +117,6 @@ function BillingContent() {
               <p className="text-sm text-muted-foreground">
                 Kies een plan hieronder om weer toegang te krijgen tot je
                 dashboard.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Payment complete */}
-      {paymentComplete && (
-        <Card className="border-green-200 bg-green-50">
-          <CardContent className="flex items-center gap-3 pt-6">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
-            <div>
-              <p className="font-medium text-green-800">Betaling voltooid</p>
-              <p className="text-sm text-green-700">
-                Je abonnement wordt geactiveerd zodra de betaling is verwerkt.
               </p>
             </div>
           </CardContent>

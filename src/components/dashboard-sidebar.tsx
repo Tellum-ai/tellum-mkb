@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   FileText,
   CreditCard,
+  Users,
   Settings,
   LogOut,
   ChevronUp,
@@ -51,9 +52,9 @@ const navItems = [
     icon: CreditCard,
   },
   {
-    title: "Instellingen",
-    href: "/dashboard/settings",
-    icon: Settings,
+    title: "Contacten",
+    href: "/dashboard/contacts",
+    icon: Users,
   },
 ];
 
@@ -97,7 +98,7 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
-                    isActive={pathname === item.href}
+                    isActive={item.href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(item.href)}
                     className="gap-3 px-4 py-2.5"
                   >
                     <Link href={item.href}>

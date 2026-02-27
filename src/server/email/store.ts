@@ -3,9 +3,17 @@ import { ImapFlow } from "imapflow";
 
 import { env } from "~/env.js";
 import { db } from "~/server/db/index";
-import { invoices, processedEmails } from "~/server/db/schema";
+import { invoices, processedEmails, contacts } from "~/server/db/schema";
 import { createMoneybirdExternalSalesInvoice } from "~/server/moneybird";
 import type { GeminiExtractionResult, InvoiceData, ParsedEmail } from "./types";
+
+/**
+ * Extract a bare email address from a "Name <email>" string.
+ */
+function extractEmail(from: string): string {
+  const match = /<([^>]+)>/.exec(from);
+  return (match?.[1] ?? from).trim().toLowerCase();
+}
 
 export async function isEmailAlreadyProcessed(
   gmailMessageId: string
@@ -67,6 +75,30 @@ export async function storeEmailResult(
 
     if (isInvoice && result.invoice) {
       const inv = result.invoice;
+      const senderEmail = extractEmail(email.from);
+
+      // Upsert contact: find by email or create
+      let contact = await tx.query.contacts.findFirst({
+        where: eq(contacts.email, senderEmail),
+      });
+
+      if (!contact) {
+        const [newContact] = await tx
+          .insert(contacts)
+          .values({
+            email: senderEmail,
+            companyName: inv.sender.company,
+          })
+          .returning();
+        contact = newContact;
+      }
+
+      // Auto-approve if contact is whitelisted with autoApprove
+      const paymentStatus =
+        contact?.isWhitelisted && contact?.autoApprove
+          ? "ingepland"
+          : "nieuw";
+
       const [insertedInvoice] = await tx
         .insert(invoices)
         .values({
@@ -78,7 +110,8 @@ export async function storeEmailResult(
           invoiceDate: inv.invoice_date,
           senderCompany: inv.sender.company,
           totalInclVat: String(inv.totals.total_incl_vat),
-          paymentStatus: inv.payment_status,
+          paymentStatus,
+          contactId: contact?.id,
           pdfUrls,
         })
         .returning();
