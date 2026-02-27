@@ -13,8 +13,16 @@ export const env = createEnv({
     BETTER_AUTH_GOOGLE_CLIENT_SECRET: z.string(),
     DATABASE_URL: z.string().url(),
     NODE_ENV: z
-      .enum(["development", "test", "production"]) 
+      .enum(["development", "test", "production"])
       .default("development"),
+    // Gmail IMAP
+    GMAIL_USER: z.string().email(),
+    GMAIL_APP_PASSWORD: z.string(),
+    // Gemini AI
+    GEMINI_API_KEY: z.string(),
+    GEMINI_MODEL: z.string().default("gemini-3.1-pro-preview"),
+    // Cron job secret
+    CRON_SECRET: z.string().optional(),
   },
 
   /**
@@ -36,6 +44,11 @@ export const env = createEnv({
     BETTER_AUTH_GOOGLE_CLIENT_SECRET: process.env.BETTER_AUTH_GOOGLE_CLIENT_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: process.env.NODE_ENV,
+    GMAIL_USER: process.env.GMAIL_USER,
+    GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GEMINI_MODEL: process.env.GEMINI_MODEL,
+    CRON_SECRET: process.env.CRON_SECRET,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
