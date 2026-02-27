@@ -225,6 +225,10 @@ export const invoices = pgTable("invoices", {
   pdfUrls: text("pdf_urls").array().default([]),
   /** Moneybird external sales invoice ID, set after successful sync */
   moneybirdId: text("moneybird_id"),
+  /** Payment status extracted from the PDF/email by Gemini */
+  paymentStatus: text("payment_status", {
+    enum: ["paid", "unpaid", "unknown"],
+  }).default("unknown"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .$defaultFn(() => new Date())
     .notNull(),

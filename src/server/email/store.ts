@@ -78,6 +78,7 @@ export async function storeEmailResult(
           invoiceDate: inv.invoice_date,
           senderCompany: inv.sender.company,
           totalInclVat: String(inv.totals.total_incl_vat),
+          paymentStatus: inv.payment_status,
           pdfUrls,
         })
         .returning();

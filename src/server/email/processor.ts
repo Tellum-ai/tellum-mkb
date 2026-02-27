@@ -44,6 +44,7 @@ const InvoiceSchema = z.object({
     total_incl_vat: z.number(),
   }),
   payment_reference: z.string().nullable().optional(),
+  payment_status: z.enum(["paid", "unpaid", "unknown"]),
 });
 
 const GeminiResponseSchema = z.union([
@@ -98,9 +99,15 @@ If the email contains an invoice (a request for payment for goods or services), 
       "vat_amount": number,
       "total_incl_vat": number
     },
-    "payment_reference": "string or null"
+    "payment_reference": "string or null",
+    "payment_status": "paid" | "unpaid" | "unknown"
   }
 }
+
+For "payment_status":
+- Return "paid" if the PDF or email clearly indicates the invoice has already been paid (e.g. "Betaald", "Paid", "Voldaan", a payment receipt, or a zero balance due).
+- Return "unpaid" if the invoice is clearly an open request for payment.
+- Return "unknown" if it cannot be determined from the document.
 
 If the email does NOT contain an invoice (newsletter, notification, general correspondence, etc.), return exactly:
 null

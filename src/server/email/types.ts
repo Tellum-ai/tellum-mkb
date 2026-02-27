@@ -52,6 +52,8 @@ export interface InvoiceTotals {
   total_incl_vat: number;
 }
 
+export type PaymentStatus = "paid" | "unpaid" | "unknown";
+
 export interface InvoiceData {
   invoice_number: string;
   invoice_date: string;
@@ -61,6 +63,8 @@ export interface InvoiceData {
   line_items: LineItem[];
   totals: InvoiceTotals;
   payment_reference?: string | null;
+  /** Whether the invoice has already been paid, as detected from the PDF/email */
+  payment_status: PaymentStatus;
 }
 
 export type GeminiExtractionResult = { invoice: InvoiceData } | null;
