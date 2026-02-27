@@ -4,7 +4,8 @@ import { ImapFlow } from "imapflow";
 import { env } from "~/env.js";
 import { db } from "~/server/db/index";
 import { invoices, processedEmails } from "~/server/db/schema";
-import type { GeminiExtractionResult, ParsedEmail } from "./types";
+import { createMoneybirdExternalSalesInvoice } from "~/server/moneybird";
+import type { GeminiExtractionResult, InvoiceData, ParsedEmail } from "./types";
 
 export async function isEmailAlreadyProcessed(
   gmailMessageId: string
@@ -43,6 +44,8 @@ export async function storeEmailResult(
     .map((a) => a.r2Url)
     .filter((url): url is string => url !== undefined);
 
+  let invoiceRowId: string | undefined;
+
   await db.transaction(async (tx) => {
     const [insertedEmail] = await tx
       .insert(processedEmails)
@@ -64,23 +67,61 @@ export async function storeEmailResult(
 
     if (isInvoice && result.invoice) {
       const inv = result.invoice;
-      await tx.insert(invoices).values({
-        processedEmailId: insertedEmail.id,
-        gmailMessageId: email.gmailMessageId,
-        invoiceData: result as unknown as Record<string, unknown>,
-        status: "not_processed",
-        invoiceNumber: inv.invoice_number,
-        invoiceDate: inv.invoice_date,
-        senderCompany: inv.sender.company,
-        totalInclVat: String(inv.totals.total_incl_vat),
-        pdfUrls,
-      });
+      const [insertedInvoice] = await tx
+        .insert(invoices)
+        .values({
+          processedEmailId: insertedEmail.id,
+          gmailMessageId: email.gmailMessageId,
+          invoiceData: result as unknown as Record<string, unknown>,
+          status: "processing",
+          invoiceNumber: inv.invoice_number,
+          invoiceDate: inv.invoice_date,
+          senderCompany: inv.sender.company,
+          totalInclVat: String(inv.totals.total_incl_vat),
+          pdfUrls,
+        })
+        .returning();
+
+      if (insertedInvoice) {
+        invoiceRowId = insertedInvoice.id;
+      }
     }
   });
 
   console.log(
     `[store] Saved message ${email.gmailMessageId} | invoice=${isInvoice} | pdfs=${pdfUrls.length}`
   );
+
+  // Push to Moneybird after the transaction has committed so a Moneybird
+  // failure never rolls back the stored invoice record.
+  if (invoiceRowId && isInvoice && result?.invoice) {
+    await syncToMoneybird(invoiceRowId, result.invoice);
+  }
+}
+
+async function syncToMoneybird(
+  invoiceRowId: string,
+  invoice: InvoiceData
+): Promise<void> {
+  try {
+    const moneybirdId = await createMoneybirdExternalSalesInvoice(invoice);
+    await db
+      .update(invoices)
+      .set({ status: "processed", moneybirdId })
+      .where(eq(invoices.id, invoiceRowId));
+    console.log(
+      `[store] Synced invoice ${invoiceRowId} to Moneybird (id=${moneybirdId})`
+    );
+  } catch (err) {
+    await db
+      .update(invoices)
+      .set({ status: "error" })
+      .where(eq(invoices.id, invoiceRowId));
+    console.error(
+      `[store] Failed to sync invoice ${invoiceRowId} to Moneybird:`,
+      err
+    );
+  }
 }
 
 export async function markEmailAsRead(imapUid: number): Promise<void> {

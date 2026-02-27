@@ -222,6 +222,8 @@ export const invoices = pgTable("invoices", {
   totalInclVat: text("total_incl_vat"),
   /** R2 URLs of every PDF attachment that was saved for this invoice email */
   pdfUrls: text("pdf_urls").array().default([]),
+  /** Moneybird external sales invoice ID, set after successful sync */
+  moneybirdId: text("moneybird_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .$defaultFn(() => new Date())
     .notNull(),

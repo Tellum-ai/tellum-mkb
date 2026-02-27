@@ -54,8 +54,8 @@ export async function uploadPdfToR2({
     }),
   );
 
-  // R2 endpoint URL for direct access
-  const url = `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${key}`;
+  // Public URL via the R2 public development domain
+  const url = `${env.R2_PUBLIC_URL}/${key}`;
 
   console.log(`[r2] Uploaded PDF to ${url}`);
 

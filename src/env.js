@@ -28,6 +28,11 @@ export const env = createEnv({
     R2_ACCESS_KEY_ID: z.string(),
     R2_SECRET_ACCESS_KEY: z.string(),
     R2_BUCKET_NAME: z.string().default("tellum-mkb"),
+    R2_PUBLIC_URL: z.string().url(),
+    // Moneybird
+    MONEYBIRD_API_TOKEN: z.string(),
+    MONEYBIRD_ADMINISTRATION_ID: z.string(),
+    MONEYBIRD_DEFAULT_CONTACT_ID: z.string(),
   },
 
   /**
@@ -58,6 +63,10 @@ export const env = createEnv({
     R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
     R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
+    R2_PUBLIC_URL: process.env.R2_PUBLIC_URL,
+    MONEYBIRD_API_TOKEN: process.env.MONEYBIRD_API_TOKEN,
+    MONEYBIRD_ADMINISTRATION_ID: process.env.MONEYBIRD_ADMINISTRATION_ID,
+    MONEYBIRD_DEFAULT_CONTACT_ID: process.env.MONEYBIRD_DEFAULT_CONTACT_ID,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
