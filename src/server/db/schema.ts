@@ -2,11 +2,14 @@ import { relations } from "drizzle-orm";
 import {
   boolean,
   index,
+  jsonb,
   pgTable,
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+
 
 export const posts = pgTable(
   "post",
@@ -174,8 +177,61 @@ export const invoiceUsage = pgTable(
   (t) => [unique("invoice_usage_user_month").on(t.userId, t.year, t.month)],
 );
 
-// ── Relations ───────────────────────────────────────────────────
+// ── Email processing tables ─────────────────────────────────────
 
+// Idempotency table — tracks every Gmail message we have seen to prevent
+// duplicate processing across cron runs.
+export const processedEmails = pgTable(
+  "processed_emails",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    gmailMessageId: text("gmail_message_id").notNull().unique(),
+    imapUid: text("imap_uid"),
+    subject: text("subject"),
+    fromAddress: text("from_address"),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    processedAt: timestamp("processed_at", { withTimezone: true })
+      .$defaultFn(() => new Date())
+      .notNull(),
+    wasInvoice: text("was_invoice", { enum: ["yes", "no"] }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("processed_emails_msg_id_idx").on(t.gmailMessageId),
+  ],
+);
+
+// Stores extracted invoice JSON from Gemini AI plus downstream status.
+export const invoices = pgTable("invoices", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  processedEmailId: text("processed_email_id")
+    .notNull()
+    .references(() => processedEmails.id, { onDelete: "cascade" }),
+  gmailMessageId: text("gmail_message_id").notNull(),
+  invoiceData: jsonb("invoice_data").notNull(),
+  status: text("status", {
+    enum: ["not_processed", "processing", "processed", "error"],
+  })
+    .notNull()
+    .default("not_processed"),
+  invoiceNumber: text("invoice_number"),
+  invoiceDate: text("invoice_date"),
+  senderCompany: text("sender_company"),
+  totalInclVat: text("total_incl_vat"),
+  /** R2 URLs of every PDF attachment that was saved for this invoice email */
+  pdfUrls: text("pdf_urls").array().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .$defaultFn(() => new Date())
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).$onUpdate(
+    () => new Date(),
+  ),
+});
+
+// ── Relations ───────────────────────────────────────────────────
 export const userRelations = relations(user, ({ many }) => ({
   account: many(account),
   session: many(session),
@@ -206,4 +262,21 @@ export const paymentRelations = relations(payment, ({ one }) => ({
 
 export const invoiceUsageRelations = relations(invoiceUsage, ({ one }) => ({
   user: one(user, { fields: [invoiceUsage.userId], references: [user.id] }),
+}));
+
+export const processedEmailRelations = relations(
+  processedEmails,
+  ({ one }) => ({
+    invoice: one(invoices, {
+      fields: [processedEmails.id],
+      references: [invoices.processedEmailId],
+    }),
+  }),
+);
+
+export const invoiceRelations = relations(invoices, ({ one }) => ({
+  processedEmail: one(processedEmails, {
+    fields: [invoices.processedEmailId],
+    references: [processedEmails.id],
+  }),
 }));
