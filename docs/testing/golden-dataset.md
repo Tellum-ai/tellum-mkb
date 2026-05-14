@@ -47,6 +47,7 @@ Each `.eml` has a companion `.json` with the ground truth for the eval runner:
 ```json
 {
   "emailFile": "001-kpn-april.eml",
+  "messageId": "mp59mskz.333sl9rtd1@kpn.com",
   "wasInvoice": true,
   "supplier": "KPN B.V.",
   "invoiceNumber": "KPN-2026-04-001234",
@@ -61,7 +62,9 @@ Each `.eml` has a companion `.json` with the ground truth for the eval runner:
 }
 ```
 
-Noise emails have `{ "wasInvoice": false }`.
+`messageId` is the RFC 2822 Message-ID embedded in the .eml; the eval runner uses it to pair processed Gmail messages with their ground truth. Regenerating fixtures produces new IDs, so re-append (`bun run inbox:append`) after `bun run inbox:generate` to keep on-disk and Gmail in sync.
+
+Noise emails have `{ "wasInvoice": false }` plus the same `messageId` field.
 
 ## Phase 1 — current fixtures
 

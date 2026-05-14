@@ -263,6 +263,12 @@ async function writeOutput(dir: string, filename: string, content: string | Uint
   await writeFile(join(dir, filename), content)
 }
 
+function extractMessageId(eml: string): string {
+  const match = /^Message-ID:\s*<([^>]+)>/im.exec(eml)
+  if (!match) throw new Error("generated .eml has no Message-ID header")
+  return match[1]!
+}
+
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2)
@@ -283,6 +289,7 @@ for (const scenario of INVOICE_SCENARIOS) {
   const totals = calcAnnotationTotals(scenario)
   const annotation: Annotation = {
     emailFile: emlFilename,
+    messageId: extractMessageId(eml),
     wasInvoice: true,
     supplier:
       scenario.supplier.type === "dutch"
@@ -316,6 +323,7 @@ for (const noise of NOISE_SCENARIOS) {
 
   const annotation: Annotation = {
     emailFile: emlFilename,
+    messageId: extractMessageId(eml),
     wasInvoice: false,
   }
 

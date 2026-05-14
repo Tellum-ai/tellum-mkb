@@ -90,7 +90,6 @@ async function runInboxScan(inboxOwnerId: string): Promise<ScanResults> {
         root: true,
         attributes: {
           userId: inboxOwnerId,
-          gmailMessageId: email.gmailMessageId,
           subject: email.subject,
           from: email.from,
           attachments: email.attachments.length,
@@ -140,9 +139,20 @@ async function runInboxScan(inboxOwnerId: string): Promise<ScanResults> {
           );
         }
 
-        // If this email matches a fixture, record evaluation spans under the
-        // current process-email span. Real (non-fixture) emails fall through.
-        const annotation = fixtureAnnotations.get(email.gmailMessageId);
+        // If this email matches a fixture (by Message-ID), record evaluation
+        // spans under the current process-email span. Real (non-fixture)
+        // emails fall through. Normalize by stripping the surrounding
+        // angle brackets that mailparser preserves in `messageId`.
+        const normalizedMessageId = email.gmailMessageId.replace(
+          /^<|>$/g,
+          "",
+        );
+        const annotation = fixtureAnnotations.get(normalizedMessageId);
+        if (!annotation) {
+          console.log(
+            `[email.scanInbox] No fixture annotation for Message-ID "${normalizedMessageId}" — skipping eval.`,
+          );
+        }
         if (annotation) {
           const evals = evaluateExtraction(result, annotation);
           span.setAttribute("eval.fixture", annotation.emailFile);

@@ -71,6 +71,10 @@ export interface NoiseScenario {
 
 export interface Annotation {
   emailFile: string
+  /** RFC 2822 Message-ID embedded in the .eml (without angle brackets). The
+   * eval pipeline pairs incoming Gmail messages with their ground truth using
+   * this value, so it must match what the generator wrote into the .eml. */
+  messageId: string
   wasInvoice: boolean
   supplier?: string
   invoiceNumber?: string

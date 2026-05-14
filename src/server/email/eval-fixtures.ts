@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 export interface FixtureAnnotation {
   emailFile: string;
+  /** RFC 2822 Message-ID (no angle brackets) — written by the generator. */
+  messageId: string;
   wasInvoice: boolean;
   supplier?: string;
   invoiceNumber?: string;
@@ -21,9 +23,10 @@ const FIXTURES_DIR = join(process.cwd(), "scripts/generate-inbox/output");
 let cache: Map<string, FixtureAnnotation> | null = null;
 
 /**
- * Index ground-truth annotations by RFC 2822 Message-ID so that during an inbox
- * scan we can pair each processed email with its expected output. Result is
- * cached for the process lifetime — fixtures don't change between runs.
+ * Index ground-truth annotations by Message-ID so that during an inbox scan
+ * we can pair each processed email with its expected output. The generator
+ * writes `messageId` directly into each .json — no need to reparse the .eml.
+ * Result is cached for the process lifetime.
  */
 export async function loadFixtureAnnotations(): Promise<
   Map<string, FixtureAnnotation>
@@ -36,28 +39,33 @@ export async function loadFixtureAnnotations(): Promise<
   try {
     files = await readdir(FIXTURES_DIR);
   } catch {
+    console.warn(
+      `[eval-fixtures] Could not read ${FIXTURES_DIR}. Evals disabled.`,
+    );
     cache = map;
     return map;
   }
 
-  const emlFiles = files.filter((f) => f.endsWith(".eml"));
+  const jsonFiles = files.filter((f) => f.endsWith(".json"));
 
-  for (const eml of emlFiles) {
-    const jsonName = eml.replace(/\.eml$/, ".json");
-    if (!files.includes(jsonName)) continue;
-
-    const emlContent = await readFile(join(FIXTURES_DIR, eml), "utf-8");
-    const match = /^Message-ID:\s*<([^>]+)>/im.exec(emlContent);
-    if (!match) continue;
-    const messageId = match[1]!;
-
+  for (const jsonFile of jsonFiles) {
     const annotation = JSON.parse(
-      await readFile(join(FIXTURES_DIR, jsonName), "utf-8"),
+      await readFile(join(FIXTURES_DIR, jsonFile), "utf-8"),
     ) as FixtureAnnotation;
 
-    map.set(messageId, annotation);
+    if (!annotation.messageId) {
+      console.warn(
+        `[eval-fixtures] ${jsonFile} has no messageId — regenerate fixtures.`,
+      );
+      continue;
+    }
+
+    map.set(annotation.messageId, annotation);
   }
 
+  console.log(
+    `[eval-fixtures] Loaded ${map.size} fixture annotations (indexed by Message-ID).`,
+  );
   cache = map;
   return map;
 }
