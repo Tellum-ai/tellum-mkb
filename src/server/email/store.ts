@@ -4,8 +4,7 @@ import { ImapFlow } from "imapflow";
 import { env } from "~/env.js";
 import { db } from "~/server/db/index";
 import { invoices, processedEmails, contacts } from "~/server/db/schema";
-import { createMoneybirdExternalSalesInvoice } from "~/server/moneybird";
-import type { GeminiExtractionResult, InvoiceData, ParsedEmail } from "./types";
+import type { GeminiExtractionResult, ParsedEmail } from "./types";
 
 /**
  * Extract a bare email address from a "Name <email>" string.
@@ -43,7 +42,8 @@ export async function getAlreadyProcessedIds(
 
 export async function storeEmailResult(
   email: ParsedEmail,
-  result: GeminiExtractionResult
+  result: GeminiExtractionResult,
+  userId: string,
 ): Promise<void> {
   const isInvoice = result !== null;
 
@@ -77,15 +77,16 @@ export async function storeEmailResult(
       const inv = result.invoice;
       const senderEmail = extractEmail(email.from);
 
-      // Upsert contact: find by email or create
+      // Upsert contact: find by email within this tenant or create
       let contact = await tx.query.contacts.findFirst({
-        where: eq(contacts.email, senderEmail),
+        where: (c, { and }) => and(eq(c.userId, userId), eq(c.email, senderEmail)),
       });
 
       if (!contact) {
         const [newContact] = await tx
           .insert(contacts)
           .values({
+            userId,
             email: senderEmail,
             companyName: inv.sender.company,
           })
@@ -122,40 +123,16 @@ export async function storeEmailResult(
     }
   });
 
+  if (invoiceRowId) {
+    await db
+      .update(invoices)
+      .set({ status: "processed" })
+      .where(eq(invoices.id, invoiceRowId));
+  }
+
   console.log(
     `[store] Saved message ${email.gmailMessageId} | invoice=${isInvoice} | pdfs=${pdfUrls.length}`
   );
-
-  // Push to Moneybird after the transaction has committed so a Moneybird
-  // failure never rolls back the stored invoice record.
-  if (invoiceRowId && isInvoice && result?.invoice) {
-    await syncToMoneybird(invoiceRowId, result.invoice);
-  }
-}
-
-async function syncToMoneybird(
-  invoiceRowId: string,
-  invoice: InvoiceData
-): Promise<void> {
-  try {
-    const moneybirdId = await createMoneybirdExternalSalesInvoice(invoice);
-    await db
-      .update(invoices)
-      .set({ status: "processed", moneybirdId })
-      .where(eq(invoices.id, invoiceRowId));
-    console.log(
-      `[store] Synced invoice ${invoiceRowId} to Moneybird (id=${moneybirdId})`
-    );
-  } catch (err) {
-    await db
-      .update(invoices)
-      .set({ status: "error" })
-      .where(eq(invoices.id, invoiceRowId));
-    console.error(
-      `[store] Failed to sync invoice ${invoiceRowId} to Moneybird:`,
-      err
-    );
-  }
 }
 
 export async function markEmailAsRead(imapUid: number): Promise<void> {
@@ -179,6 +156,40 @@ export async function markEmailAsRead(imapUid: number): Promise<void> {
       { uid: true }
     );
     console.log(`[store] Marked IMAP UID=${imapUid} as read.`);
+  } finally {
+    await client.logout();
+  }
+}
+
+/**
+ * Mark every message in INBOX as unread by removing the \Seen flag.
+ * Used by the reset-test-data flow so a full re-scan can be performed.
+ */
+export async function markAllInboxAsUnread(): Promise<number> {
+  const client = new ImapFlow({
+    host: "imap.gmail.com",
+    port: 993,
+    secure: true,
+    auth: {
+      user: env.GMAIL_USER,
+      pass: env.GMAIL_APP_PASSWORD,
+    },
+    logger: false,
+  });
+
+  await client.connect();
+  try {
+    await client.mailboxOpen("INBOX");
+    const uids = await client.search({ seen: true }, { uid: true });
+
+    if (!uids || uids.length === 0) {
+      console.log("[store] No seen emails to mark as unread.");
+      return 0;
+    }
+
+    await client.messageFlagsRemove(uids, ["\\Seen"], { uid: true });
+    console.log(`[store] Marked ${uids.length} email(s) as unread.`);
+    return uids.length;
   } finally {
     await client.logout();
   }

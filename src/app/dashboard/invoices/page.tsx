@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   FileText,
   Mail,
@@ -8,6 +8,9 @@ import {
   CheckCircle2,
   CalendarClock,
   Loader2,
+  BookOpen,
+  RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,13 +31,21 @@ import { SidebarTrigger } from "~/components/ui/sidebar";
 import { Separator } from "~/components/ui/separator";
 import { Skeleton } from "~/components/ui/skeleton";
 import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "~/components/ui/alert-dialog";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
+import { Label } from "~/components/ui/label";
 import { formatCurrency, formatDate, type PaymentStatus } from "~/lib/format";
 import { api, type RouterOutputs } from "~/trpc/react";
 
@@ -74,7 +85,7 @@ function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
       icon: Mail,
     },
     goedgekeurd: {
-      label: "Goedgekeurd",
+      label: "Geboekt",
       className: "bg-amber-50 text-amber-700 border-amber-200",
       icon: Clock,
     },
@@ -100,50 +111,181 @@ function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   );
 }
 
+const VAT_RATES = [
+  { value: "21", label: "21% (standaard)" },
+  { value: "9", label: "9% (laag tarief)" },
+  { value: "0", label: "0% (vrijgesteld)" },
+] as const;
+
+function BookingDialog({
+  invoice,
+  onClose,
+}: {
+  invoice: InvoiceRow;
+  onClose: () => void;
+}) {
+  const utils = api.useUtils();
+  const [ledgerAccountId, setLedgerAccountId] = useState<string>("");
+  const [vatRate, setVatRate] = useState<"0" | "9" | "21">("21");
+
+  const { data: kostenAccounts = [] } = api.ledger.getKostenAccounts.useQuery();
+
+  const bookPurchase = api.invoice.bookPurchase.useMutation({
+    onSuccess: () => {
+      void utils.invoice.getAll.invalidate();
+      void utils.invoice.getStats.invalidate();
+      toast.success("Factuur geboekt");
+      onClose();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const totalInclVat = parseFloat(invoice.totaal.toString());
+  const rate = parseInt(vatRate) / 100;
+  const exclVat = totalInclVat / (1 + rate);
+  const vat = totalInclVat - exclVat;
+
+  const canSubmit = !!ledgerAccountId && !bookPurchase.isPending;
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5" />
+            Factuur boeken
+          </DialogTitle>
+          <DialogDescription>
+            {invoice.leverancier} — {invoice.factuurnummer || "geen factuurnummer"}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Summary */}
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Totaal incl. BTW</span>
+              <span className="font-medium">{formatCurrency(totalInclVat)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Ontvangen</span>
+              <span>{invoice.ontvangen ? formatDate(invoice.ontvangen) : "—"}</span>
+            </div>
+          </div>
+
+          {/* Ledger account */}
+          <div className="space-y-1.5">
+            <Label>Grootboekrekening (kosten)</Label>
+            <Select value={ledgerAccountId} onValueChange={setLedgerAccountId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Kies een rekening…" />
+              </SelectTrigger>
+              <SelectContent>
+                {kostenAccounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.number} — {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* VAT rate */}
+          <div className="space-y-1.5">
+            <Label>BTW tarief</Label>
+            <Select value={vatRate} onValueChange={(v) => setVatRate(v as typeof vatRate)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VAT_RATES.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {r.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Calculated split */}
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Journaalpost</p>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">
+                Debet kostenrekening
+              </span>
+              <span className="font-mono">{formatCurrency(exclVat)}</span>
+            </div>
+            {vat > 0.005 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Debet BTW te vorderen (1500)</span>
+                <span className="font-mono">{formatCurrency(vat)}</span>
+              </div>
+            )}
+            <Separator className="my-1" />
+            <div className="flex justify-between font-medium">
+              <span>Credit Crediteuren (1100)</span>
+              <span className="font-mono">{formatCurrency(totalInclVat)}</span>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Annuleren
+          </Button>
+          <Button
+            disabled={!canSubmit}
+            onClick={() =>
+              bookPurchase.mutate({
+                invoiceId: invoice.id,
+                ledgerAccountId,
+                vatRate: parseInt(vatRate) as 0 | 9 | 21,
+              })
+            }
+          >
+            {bookPurchase.isPending && (
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+            )}
+            Bevestig boeking
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function InvoicesPage() {
   const utils = api.useUtils();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [mutatingId, setMutatingId] = useState<string | null>(null);
-  const [whitelistDialog, setWhitelistDialog] = useState<{
-    invoice: InvoiceRow;
-    autoApprove: boolean;
-  } | null>(null);
+  const [bookingInvoice, setBookingInvoice] = useState<InvoiceRow | null>(null);
 
-  const { data: invoices, isLoading } = api.invoice.getAll.useQuery();
+  const { data: invoicesData, isLoading } = api.invoice.getAll.useQuery();
 
-  const approve = api.invoice.approve.useMutation({
+  const resetTestData = api.email.resetTestData.useMutation({
     onSuccess: () => {
       void utils.invoice.getAll.invalidate();
       void utils.invoice.getStats.invalidate();
-      setSelectedIds(new Set());
-      setMutatingId(null);
-      toast.success("Facturen goedgekeurd");
+      toast.success("Testdata gereset — inbox kan opnieuw gescand worden");
     },
-    onError: () => {
-      setMutatingId(null);
-      toast.error("Kon facturen niet goedkeuren");
-    },
+    onError: (err) => toast.error(err.message),
   });
 
-  const approveAndWhitelist = api.invoice.approveAndWhitelist.useMutation({
-    onSuccess: () => {
+  const scanInbox = api.email.scanInbox.useMutation({
+    onSuccess: (res) => {
       void utils.invoice.getAll.invalidate();
       void utils.invoice.getStats.invalidate();
-      void utils.contact.getAll.invalidate();
-      setSelectedIds(new Set());
-      setWhitelistDialog(null);
-      toast.success("Factuur goedgekeurd en contact op whitelist gezet");
+      toast.success(
+        `Scan klaar — ${res.invoicesFound} factuur${res.invoicesFound !== 1 ? "en" : ""} gevonden, ${res.processed} verwerkt, ${res.remaining} resterend`,
+      );
     },
-    onError: () => toast.error("Kon factuur niet goedkeuren"),
+    onError: (err) => toast.error(err.message),
   });
 
-
-  const allInvoices = invoices ?? [];
+  const allInvoices = useMemo(() => invoicesData ?? [], [invoicesData]);
 
   const filterByStatus = (status?: PaymentStatus) =>
-    status
-      ? allInvoices.filter((i) => i.paymentStatus === status)
-      : allInvoices;
+    status ? allInvoices.filter((i) => i.paymentStatus === status) : allInvoices;
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -171,31 +313,6 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleSingleApprove = (invoice: InvoiceRow) => {
-    // If contact is already whitelisted, approve directly
-    if (invoice.contact?.isWhitelisted) {
-      setMutatingId(invoice.id);
-      approve.mutate({ ids: [invoice.id] });
-      return;
-    }
-    // Otherwise show whitelist dialog (works with or without existing contact)
-    setWhitelistDialog({ invoice, autoApprove: false });
-  };
-
-  const handleBulkApprove = () => {
-    const ids = allInvoices
-      .filter((i) => selectedIds.has(i.id) && i.paymentStatus === "nieuw")
-      .map((i) => i.id);
-    if (ids.length > 0) approve.mutate({ ids });
-  };
-
-  const isBulkMutating =
-    approve.isPending || approveAndWhitelist.isPending;
-
-  const selectedNieuwCount = allInvoices.filter(
-    (i) => selectedIds.has(i.id) && i.paymentStatus === "nieuw",
-  ).length;
-
   function renderTable(invoiceList: InvoiceRow[]) {
     if (isLoading) {
       return (
@@ -208,8 +325,7 @@ export default function InvoicesPage() {
     }
 
     const allSelected =
-      invoiceList.length > 0 &&
-      invoiceList.every((i) => selectedIds.has(i.id));
+      invoiceList.length > 0 && invoiceList.every((i) => selectedIds.has(i.id));
 
     return (
       <Table>
@@ -283,14 +399,11 @@ export default function InvoicesPage() {
                   {invoice.paymentStatus === "nieuw" && (
                     <Button
                       size="sm"
-                      disabled={mutatingId === invoice.id}
-                      onClick={() => handleSingleApprove(invoice)}
-                      className="bg-primary text-primary-foreground hover:bg-periwinkle-dark"
+                      onClick={() => setBookingInvoice(invoice)}
+                      className="bg-primary text-primary-foreground hover:bg-primary/90"
                     >
-                      {mutatingId === invoice.id ? (
-                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                      ) : null}
-                      Goedkeuren
+                      <BookOpen className="mr-1.5 h-3 w-3" />
+                      Boeken
                     </Button>
                   )}
                 </TableCell>
@@ -305,7 +418,7 @@ export default function InvoicesPage() {
   const tabs: { value: string; label: string; status?: PaymentStatus }[] = [
     { value: "alle", label: "Alle" },
     { value: "nieuw", label: "Nieuw", status: "nieuw" },
-    { value: "goedgekeurd", label: "Goedgekeurd", status: "goedgekeurd" },
+    { value: "geboekt", label: "Geboekt", status: "goedgekeurd" },
     { value: "ingepland", label: "Ingepland", status: "ingepland" },
     { value: "betaald", label: "Betaald", status: "betaald" },
   ];
@@ -317,30 +430,48 @@ export default function InvoicesPage() {
         <Separator orientation="vertical" className="h-6" />
         <div className="flex items-center gap-2">
           <FileText className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-xl font-semibold">Facturen</h1>
+          <h1 className="text-xl font-semibold">Inkoopfacturen</h1>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={resetTestData.isPending}
+            onClick={() => {
+              if (window.confirm("Weet je het zeker? Dit verwijdert alle facturen, boekingen en contacten.")) {
+                resetTestData.mutate();
+              }
+            }}
+          >
+            {resetTestData.isPending ? (
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+            ) : (
+              <Trash2 className="mr-1.5 h-3 w-3" />
+            )}
+            Reset
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={scanInbox.isPending}
+            onClick={() => scanInbox.mutate()}
+          >
+            {scanInbox.isPending ? (
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-1.5 h-3 w-3" />
+            )}
+            Inbox scannen
+          </Button>
         </div>
       </header>
 
       <div className="flex-1 space-y-6 p-6">
-        {/* Bulk action bar */}
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-3">
             <span className="text-sm font-medium">
               {selectedIds.size} geselecteerd
             </span>
-            <Separator orientation="vertical" className="h-5" />
-            {selectedNieuwCount > 0 && (
-              <Button
-                size="sm"
-                disabled={isBulkMutating}
-                onClick={handleBulkApprove}
-              >
-                {approve.isPending && (
-                  <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                )}
-                Goedkeuren ({selectedNieuwCount})
-              </Button>
-            )}
             <Button
               size="sm"
               variant="ghost"
@@ -374,73 +505,12 @@ export default function InvoicesPage() {
         </Card>
       </div>
 
-      {/* Whitelist prompt dialog */}
-      <AlertDialog
-        open={!!whitelistDialog}
-        onOpenChange={(open) => {
-          if (!open) setWhitelistDialog(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Contact op whitelist zetten?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div>
-                <strong>{whitelistDialog?.invoice.leverancier}</strong> (
-                {whitelistDialog?.invoice.leverancierEmail}) staat nog niet op de
-                whitelist. Wil je dit contact toevoegen zodat toekomstige facturen
-                sneller verwerkt worden?
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex items-center gap-2 py-2">
-            <Checkbox
-              id="auto-approve"
-              checked={whitelistDialog?.autoApprove ?? false}
-              onCheckedChange={(checked) =>
-                setWhitelistDialog((prev) =>
-                  prev ? { ...prev, autoApprove: !!checked } : null,
-                )
-              }
-            />
-            <label htmlFor="auto-approve" className="text-sm">
-              Automatisch goedkeuren voor toekomstige facturen
-            </label>
-          </div>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                const inv = whitelistDialog?.invoice;
-                setWhitelistDialog(null);
-                if (inv) {
-                  approve.mutate({ ids: [inv.id] });
-                }
-              }}
-            >
-              Alleen goedkeuren
-            </Button>
-            <Button
-              onClick={() => {
-                const inv = whitelistDialog?.invoice;
-                const autoApprove = whitelistDialog?.autoApprove ?? false;
-                setWhitelistDialog(null);
-                if (inv) {
-                  approveAndWhitelist.mutate({
-                    invoiceIds: [inv.id],
-                    contactId: inv.contactId ?? undefined,
-                    contactEmail: inv.leverancierEmail,
-                    contactCompanyName: inv.leverancier,
-                    autoApprove,
-                  });
-                }
-              }}
-            >
-              Whitelist + goedkeuren
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {bookingInvoice && (
+        <BookingDialog
+          invoice={bookingInvoice}
+          onClose={() => setBookingInvoice(null)}
+        />
+      )}
     </div>
   );
 }

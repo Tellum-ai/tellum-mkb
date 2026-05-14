@@ -24,10 +24,12 @@ export const env = createEnv({
     GMAIL_USER: z.string().email(),
     GMAIL_APP_PASSWORD: z.string(),
     // Gemini AI
-    GEMINI_API_KEY: z.string(),
+    GOOGLE_GENERATIVE_AI_API_KEY: z.string(),
     GEMINI_MODEL: z.string().default("gemini-2.5-pro"),
     // Cron job secret
     CRON_SECRET: z.string().optional(),
+    // LangWatch observability
+    LANGWATCH_API_KEY: z.string().optional(),
     // Cloudflare R2
     R2_ACCOUNT_ID: z.string(),
     R2_ACCESS_KEY_ID: z.string(),
@@ -65,9 +67,10 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     GMAIL_USER: process.env.GMAIL_USER,
     GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD,
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
     GEMINI_MODEL: process.env.GEMINI_MODEL,
     CRON_SECRET: process.env.CRON_SECRET,
+    LANGWATCH_API_KEY: process.env.LANGWATCH_API_KEY,
     R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
     R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,

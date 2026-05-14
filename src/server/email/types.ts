@@ -66,6 +66,10 @@ export interface InvoiceData {
   payment_reference?: string | null;
   /** Whether the invoice has already been paid, as detected from the PDF/email */
   payment_status: GeminiPaymentStatus;
+  /** VAT treatment used to pick the correct journal entry pattern */
+  vat_treatment: "nl_standaard" | "nl_verlegd" | "eu_diensten" | "buiten_eu";
+  /** Suggested ledger account number for the cost (e.g. 4500 for ICT/Software) */
+  cost_category: number;
 }
 
 export type GeminiExtractionResult = { invoice: InvoiceData } | null;

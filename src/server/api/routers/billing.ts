@@ -4,25 +4,15 @@ import { TRPCError } from "@trpc/server";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import {
-  customer,
   subscription,
   payment,
   invoiceUsage,
 } from "~/server/db/schema";
 import {
-  createMollieCustomer,
-  createFirstPayment,
-  createSubscription,
-  cancelMollieSubscription,
-} from "~/server/mollie/service";
-import {
   PLANS,
   type PlanId,
   type BillingCycle,
-  getPlanPrice,
-  getMollieInterval,
 } from "~/lib/billing";
-import { env } from "~/env";
 
 const planInput = z.enum(["starter", "pro", "unlimited"]);
 const billingCycleInput = z.enum(["monthly", "yearly"]);
@@ -38,7 +28,6 @@ export const billingRouter = createTRPCRouter({
 
     if (!sub) return null;
 
-    // Get current month usage
     const now = new Date();
     const usage = await ctx.db.query.invoiceUsage.findFirst({
       where: and(
@@ -64,66 +53,11 @@ export const billingRouter = createTRPCRouter({
         billingCycle: billingCycleInput,
       }),
     )
-    .mutation(async ({ ctx, input }) => {
-      const userId = ctx.session.user.id;
-      const userName = ctx.session.user.name ?? ctx.session.user.email;
-      const userEmail = ctx.session.user.email;
-
-      // Check for existing subscription
-      const existingSub = await ctx.db.query.subscription.findFirst({
-        where: eq(subscription.userId, userId),
+    .mutation(async () => {
+      throw new TRPCError({
+        code: "NOT_IMPLEMENTED",
+        message: "Betalingen worden binnenkort beschikbaar via Stripe.",
       });
-
-      if (existingSub && existingSub.status !== "pending") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Je hebt al een abonnement.",
-        });
-      }
-
-      // Get or create Mollie customer
-      let cust = await ctx.db.query.customer.findFirst({
-        where: eq(customer.userId, userId),
-      });
-
-      if (!cust) {
-        const mollieCustomerId = await createMollieCustomer(
-          userName,
-          userEmail,
-        );
-        [cust] = await ctx.db
-          .insert(customer)
-          .values({ userId, mollieCustomerId })
-          .returning();
-      }
-
-      // Create or update subscription record as "pending"
-      if (!existingSub) {
-        await ctx.db.insert(subscription).values({
-          userId,
-          mollieCustomerId: cust!.mollieCustomerId,
-          plan: input.plan,
-          billingCycle: input.billingCycle,
-          status: "pending",
-        });
-      } else {
-        await ctx.db
-          .update(subscription)
-          .set({ plan: input.plan, billingCycle: input.billingCycle })
-          .where(eq(subscription.id, existingSub.id));
-      }
-
-      const webhookUrl = `${env.MOLLIE_WEBHOOK_URL}/api/webhooks/mollie`;
-      const redirectUrl = `${env.BETTER_AUTH_URL}/payment/success`;
-
-      const firstPayment = await createFirstPayment({
-        mollieCustomerId: cust!.mollieCustomerId,
-        redirectUrl,
-        webhookUrl,
-        description: `Tellum ${PLANS[input.plan].name} - Betaalmethode autorisatie`,
-      });
-
-      return { checkoutUrl: firstPayment.checkoutUrl };
     }),
 
   getPaymentHistory: protectedProcedure.query(async ({ ctx }) => {
@@ -157,31 +91,11 @@ export const billingRouter = createTRPCRouter({
         });
       }
 
-      // Cancel existing Mollie subscription if active
-      if (sub.mollieSubscriptionId) {
-        await cancelMollieSubscription(
-          sub.mollieCustomerId,
-          sub.mollieSubscriptionId,
-        );
-      }
-
-      // Create new Mollie subscription
-      const price = getPlanPrice(input.plan, input.billingCycle);
-      const interval = getMollieInterval(input.billingCycle);
-      const newMollieSubId = await createSubscription({
-        mollieCustomerId: sub.mollieCustomerId,
-        amount: price,
-        interval,
-        description: `Tellum ${PLANS[input.plan].name} (${input.billingCycle === "monthly" ? "maandelijks" : "jaarlijks"})`,
-        webhookUrl: `${env.MOLLIE_WEBHOOK_URL}/api/webhooks/mollie`,
-      });
-
       const [updated] = await ctx.db
         .update(subscription)
         .set({
           plan: input.plan,
           billingCycle: input.billingCycle,
-          mollieSubscriptionId: newMollieSubId,
           status: "active",
         })
         .where(eq(subscription.id, sub.id))
@@ -198,17 +112,12 @@ export const billingRouter = createTRPCRouter({
       orderBy: (s, { desc }) => [desc(s.createdAt)],
     });
 
-    if (!sub?.mollieSubscriptionId) {
+    if (!sub || sub.status === "pending" || sub.status === "cancelled") {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "Geen actief abonnement om op te zeggen.",
       });
     }
-
-    await cancelMollieSubscription(
-      sub.mollieCustomerId,
-      sub.mollieSubscriptionId,
-    );
 
     const [updated] = await ctx.db
       .update(subscription)
@@ -237,25 +146,10 @@ export const billingRouter = createTRPCRouter({
       });
     }
 
-    const price = getPlanPrice(
-      sub.plan as PlanId,
-      sub.billingCycle as BillingCycle,
-    );
-    const interval = getMollieInterval(sub.billingCycle as BillingCycle);
-
-    const newMollieSubId = await createSubscription({
-      mollieCustomerId: sub.mollieCustomerId,
-      amount: price,
-      interval,
-      description: `Tellum ${PLANS[sub.plan as PlanId].name} (${sub.billingCycle === "monthly" ? "maandelijks" : "jaarlijks"})`,
-      webhookUrl: `${env.MOLLIE_WEBHOOK_URL}/api/webhooks/mollie`,
-    });
-
     const [updated] = await ctx.db
       .update(subscription)
       .set({
         status: "active",
-        mollieSubscriptionId: newMollieSubId,
         cancelledAt: null,
       })
       .where(eq(subscription.id, sub.id))

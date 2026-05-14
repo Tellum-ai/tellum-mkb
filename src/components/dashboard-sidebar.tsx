@@ -8,6 +8,8 @@ import {
   Settings,
   LogOut,
   ChevronUp,
+  BookOpen,
+  Building2,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -50,6 +52,16 @@ const navItems = [
     title: "Contacten",
     href: "/dashboard/contacts",
     icon: Users,
+  },
+  {
+    title: "Journaalposten",
+    href: "/dashboard/ledger",
+    icon: BookOpen,
+  },
+  {
+    title: "Bank",
+    href: "/dashboard/bank",
+    icon: Building2,
   },
 ];
 

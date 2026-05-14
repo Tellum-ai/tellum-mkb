@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/bascouwenberg/development/tellum-mkb && bun test 2>&1 | tail -3 | jq -Rs '{systemMessage: .}'",
+            "statusMessage": "Running tests..."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -325,8 +325,8 @@ function HeroSection() {
 
           <p className="mx-auto mb-10 max-w-2xl text-lg text-muted-foreground md:text-xl">
             Tellum haalt facturen uit je inbox, categoriseert ze automatisch en
-            laat je onbetaalde facturen direct betalen. Alles wordt gesynchroniseerd
-            met Moneybird.
+            laat je onbetaalde facturen direct betalen. Alles wordt automatisch
+            geboekt in je eigen boekhouding.
           </p>
 
           <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
@@ -348,8 +348,6 @@ function HeroSection() {
           {/* Trust strip — integration logos */}
           <div className="mt-12 flex flex-wrap items-center justify-center gap-8 opacity-40">
             <Image src="/logos/integrations/gmail.svg" alt="Gmail" width={28} height={28} className="h-7 w-7" />
-            <Image src="/logos/integrations/moneybird.svg" alt="Moneybird" width={28} height={28} className="h-7 w-auto" />
-            <Image src="/logos/integrations/ideal.svg" alt="iDEAL" width={28} height={28} className="h-7 w-7" />
             <Image src="/logos/integrations/ing.svg" alt="ING" width={56} height={28} className="h-6 w-auto" />
             <Image src="/logos/integrations/rabobank.svg" alt="Rabobank" width={80} height={28} className="h-6 w-auto" />
             <Image src="/logos/integrations/abnamro.svg" alt="ABN AMRO" width={80} height={28} className="h-6 w-auto" />
@@ -416,17 +414,14 @@ function HowItWorksSection() {
           {/* Step 3 */}
           <div>
             <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm border border-border/40">
-              <div className="flex items-center gap-1">
-                <Image src="/logos/integrations/moneybird.svg" alt="Moneybird" width={16} height={16} className="h-4 w-auto" />
-                <Image src="/logos/integrations/ideal.svg" alt="iDEAL" width={16} height={16} className="h-4 w-4" />
-              </div>
+              <TellumSymbol className="h-7 w-7" />
             </div>
             <h3 className="mb-2 text-xl font-semibold text-rich-black">
-              Betaal of synchroniseer
+              Boek en beheer
             </h3>
             <p className="text-muted-foreground">
-              Al betaalde facturen gaan direct naar Moneybird. Onbetaalde
-              facturen keur je goed en betaal je via iDEAL.
+              Keur facturen goed en boek ze direct in je eigen boekhouding.
+              Dubbel boekhouden, BTW en grootboek &mdash; allemaal ingebouwd.
             </p>
           </div>
         </div>
@@ -606,7 +601,7 @@ function FeatureCategorizationVisual() {
         </div>
         <div className="border-t bg-emerald-50/30 px-4 py-2 text-center">
           <p className="text-[10px] text-emerald-600">
-            Automatisch naar Moneybird gestuurd
+            Automatisch geboekt in je grootboek
           </p>
         </div>
       </div>
@@ -760,98 +755,66 @@ function FeaturePaymentVisual() {
   );
 }
 
-function FeatureSyncVisual() {
-  return (
-    <div className="space-y-4">
-      {/* Sync flow visualization */}
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-white shadow-lg">
-        <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2.5">
-          <Image src="/logos/integrations/moneybird.svg" alt="Moneybird" width={16} height={16} className="h-4 w-auto" />
-          <p className="text-xs font-medium text-muted-foreground">
-            Synchronisatie-overzicht
-          </p>
-        </div>
-        <div className="p-5">
-          {/* Sync items */}
-          <div className="space-y-3">
-            {[
-              {
-                vendor: "Coolblue B.V.",
-                initials: "CB",
-                color: "bg-blue-100 text-blue-700",
-                amount: "\u20AC 296,45",
-                status: "Gesynchroniseerd",
-                time: "Zojuist",
-                synced: true,
-              },
-              {
-                vendor: "KPN Zakelijk",
-                initials: "KP",
-                color: "bg-green-100 text-green-700",
-                amount: "\u20AC 108,30",
-                status: "Gesynchroniseerd",
-                time: "2 min geleden",
-                synced: true,
-              },
-              {
-                vendor: "Bol.com",
-                initials: "BC",
-                color: "bg-sky-100 text-sky-700",
-                amount: "\u20AC 89,99",
-                status: "Gesynchroniseerd",
-                time: "5 min geleden",
-                synced: true,
-              },
-              {
-                vendor: "Greenwheels",
-                initials: "GW",
-                color: "bg-emerald-100 text-emerald-700",
-                amount: "\u20AC 45,00",
-                status: "Wordt gesynchroniseerd...",
-                time: "",
-                synced: false,
-              },
-            ].map((item) => (
-              <div
-                key={item.vendor}
-                className="flex items-center gap-3 rounded-lg border border-border/40 px-3 py-2.5"
-              >
-                <div
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${item.color}`}
-                >
-                  {item.initials}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-foreground">
-                    {item.vendor}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {item.amount}
-                  </p>
-                </div>
-                {item.synced ? (
-                  <div className="flex items-center gap-1 text-[10px] text-emerald-600">
-                    <CheckCircle2 className="h-3 w-3" />
-                    {item.time}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 text-[10px] text-periwinkle-dark">
-                    <RefreshCw className="h-3 w-3 animate-spin" />
-                    Bezig...
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+function FeatureLedgerVisual() {
+  const entries = [
+    {
+      description: "KPN B.V. \u2014 april 2026",
+      debet: "4700 Telefoon",
+      credit: "1100 Crediteuren",
+      amount: "\u20AC 89,00",
+      date: "02-04-2026",
+    },
+    {
+      description: "Vercel \u2014 april 2026",
+      debet: "4500 ICT / Software",
+      credit: "1100 Crediteuren",
+      amount: "\u20AC 24,00",
+      date: "01-04-2026",
+    },
+    {
+      description: "Coolblue B.V. \u2014 factuur",
+      debet: "4400 Kantoorkosten",
+      credit: "1100 Crediteuren",
+      amount: "\u20AC 296,45",
+      date: "20-03-2026",
+    },
+  ];
 
-          {/* Moneybird destination */}
-          <div className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-emerald-50 px-3 py-2.5">
-            <Image src="/logos/integrations/moneybird.svg" alt="Moneybird" width={16} height={16} className="h-4 w-auto" />
-            <p className="text-xs font-medium text-emerald-700">
-              Alles automatisch in Moneybird
-            </p>
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/60 bg-white shadow-lg">
+      <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2.5">
+        <TellumSymbol className="h-4 w-4 text-periwinkle-dark" />
+        <p className="text-xs font-medium text-muted-foreground">
+          Journaalposten
+        </p>
+      </div>
+      <div className="divide-y">
+        {entries.map((entry) => (
+          <div key={entry.description} className="px-4 py-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-xs font-semibold text-foreground">{entry.description}</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold">{entry.amount}</span>
+                <span className="text-[10px] text-muted-foreground">{entry.date}</span>
+              </div>
+            </div>
+            <div className="space-y-0.5 text-[10px] text-muted-foreground">
+              <div className="flex gap-2">
+                <span className="w-10 text-periwinkle-dark font-medium">Debet</span>
+                <span>{entry.debet}</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="w-10 text-amber-600 font-medium">Credit</span>
+                <span>{entry.credit}</span>
+              </div>
+            </div>
           </div>
-        </div>
+        ))}
+      </div>
+      <div className="border-t bg-muted/30 px-4 py-2 text-center">
+        <p className="text-[10px] text-muted-foreground">
+          Dubbel boekhouden &mdash; altijd in balans
+        </p>
       </div>
     </div>
   );
@@ -928,7 +891,7 @@ function FeaturesSection() {
               <ul className="space-y-3 text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                  Betaalde facturen direct naar Moneybird
+                  Betaalde facturen direct geboekt in je grootboek
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-600" />
@@ -984,38 +947,37 @@ function FeaturesSection() {
         </div>
       </div>
 
-      {/* Feature 4: Auto-sync to Moneybird */}
+      {/* Feature 4: Built-in double-entry ledger */}
       <div className="border-t bg-muted/30 py-24">
         <div className="mx-auto max-w-6xl px-6">
           <div className="grid items-center gap-12 lg:grid-cols-2">
             <div className="order-2 lg:order-1">
-              <FeatureSyncVisual />
+              <FeatureLedgerVisual />
             </div>
             <div className="order-1 lg:order-2">
               <Badge
                 variant="outline"
                 className="mb-4 border-periwinkle/30 bg-periwinkle/10 text-periwinkle-dark"
               >
-                <RefreshCw className="mr-1.5 h-3 w-3" />
-                Moneybird sync
+                <FileText className="mr-1.5 h-3 w-3" />
+                Eigen boekhouding
               </Badge>
               <h2 className="mb-4 text-3xl font-bold text-rich-black">
-                Alles automatisch in je boekhouding
+                Ingebouwde boekhouding &mdash; geen externe software nodig
               </h2>
               <p className="mb-6 text-lg text-muted-foreground">
-                Elke factuur &mdash; betaald of onbetaald &mdash; wordt
-                automatisch gesynchroniseerd met Moneybird. Geen dubbele
-                invoer, geen gemiste facturen. Je boekhouding is altijd
-                up-to-date.
+                Elke goedgekeurde factuur wordt automatisch geboekt als
+                journaalpost. Dubbel boekhouden, BTW-rekeningen en een
+                volledig grootboek &mdash; allemaal ingebouwd in Tellum.
               </p>
               <ul className="space-y-3 text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-periwinkle-dark" />
-                  Realtime synchronisatie met Moneybird
+                  Dubbel boekhouden, altijd in balans
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-periwinkle-dark" />
-                  BTW en bedragen correct overgenomen
+                  BTW automatisch gesplitst per factuur
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-periwinkle-dark" />
@@ -1078,12 +1040,12 @@ function IntegrationsSection() {
               <ArrowRight className="h-4 w-4 rotate-90" />
             </div>
 
-            {/* Moneybird */}
+            {/* Grootboek */}
             <div className="flex flex-col items-center gap-3">
               <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-border/60 bg-white shadow-sm">
-                <Image src="/logos/integrations/moneybird.svg" alt="Moneybird" width={48} height={48} className="h-12 w-auto" />
+                <TellumSymbol className="h-12 w-12" />
               </div>
-              <p className="text-sm font-medium text-rich-black">Moneybird</p>
+              <p className="text-sm font-medium text-rich-black">Grootboek</p>
             </div>
           </div>
 

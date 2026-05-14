@@ -3,12 +3,17 @@ import { eq, and, inArray, ne, desc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import { calculateVatSplit } from "~/server/bookkeeping/vat";
+import { isBalanced } from "~/server/bookkeeping/journal";
 import {
   invoices,
   processedEmails,
   contacts,
   subscription,
   invoiceUsage,
+  journalEntries,
+  journalEntryLines,
+  ledgerAccounts,
 } from "~/server/db/schema";
 import { PLANS, type PlanId } from "~/lib/billing";
 import type { PaymentStatus } from "~/lib/format";
@@ -215,9 +220,10 @@ export const invoiceRouter = createTRPCRouter({
 
         // Create contact if it doesn't exist yet
         if (!contactId && input.contactEmail) {
-          // Check if contact already exists by email
+          const contactEmail = input.contactEmail;
           const existing = await tx.query.contacts.findFirst({
-            where: eq(contacts.email, input.contactEmail),
+            where: (c, { and }) =>
+              and(eq(c.userId, ctx.session.user.id), eq(c.email, contactEmail)),
           });
 
           if (existing) {
@@ -226,6 +232,7 @@ export const invoiceRouter = createTRPCRouter({
             const [newContact] = await tx
               .insert(contacts)
               .values({
+                userId: ctx.session.user.id,
                 email: input.contactEmail,
                 companyName: input.contactCompanyName,
               })
@@ -275,6 +282,212 @@ export const invoiceRouter = createTRPCRouter({
         .where(inArray(invoices.id, input.ids));
 
       return { count: input.ids.length };
+    }),
+
+  // Auto-book a purchase invoice using the VAT treatment detected by Gemini.
+  // Journal entry patterns:
+  //   nl_standaard: DEBIT costs + DEBIT 1500 BTW / CREDIT 1100 Crediteuren (incl. BTW)
+  //   nl_verlegd:   DEBIT costs + DEBIT 1500 BTW / CREDIT 1800 BTW verlegd + CREDIT 1100 Crediteuren (excl. BTW)
+  //   eu_diensten:  same as nl_verlegd (reverse charge on intracommunautaire services)
+  //   buiten_eu:    DEBIT costs / CREDIT 1100 Crediteuren (no VAT at all)
+  autoBook: protectedProcedure
+    .input(z.object({ invoiceId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      const invoice = await ctx.db.query.invoices.findFirst({
+        where: eq(invoices.id, input.invoiceId),
+      });
+      if (!invoice) throw new TRPCError({ code: "NOT_FOUND", message: "Factuur niet gevonden" });
+      if (invoice.journalEntryId) throw new TRPCError({ code: "BAD_REQUEST", message: "Factuur is al geboekt" });
+
+      const data = invoice.invoiceData as InvoiceData;
+      const vatTreatment = data?.vat_treatment ?? "nl_standaard";
+      const costAccountNumber = data?.cost_category ?? 4000;
+      const totalInclVatCents = Math.round(parseFloat(invoice.totalInclVat ?? "0") * 100);
+
+      // Fetch all required accounts in one go
+      const [costAccount, crediteuren, btwTeVorderen, btwVerlegd] = await Promise.all([
+        ctx.db.query.ledgerAccounts.findFirst({
+          where: and(eq(ledgerAccounts.userId, userId), eq(ledgerAccounts.number, costAccountNumber)),
+        }),
+        ctx.db.query.ledgerAccounts.findFirst({
+          where: and(eq(ledgerAccounts.userId, userId), eq(ledgerAccounts.number, 1100)),
+        }),
+        ctx.db.query.ledgerAccounts.findFirst({
+          where: and(eq(ledgerAccounts.userId, userId), eq(ledgerAccounts.number, 1500)),
+        }),
+        ctx.db.query.ledgerAccounts.findFirst({
+          where: and(eq(ledgerAccounts.userId, userId), eq(ledgerAccounts.number, 1800)),
+        }),
+      ]);
+
+      if (!crediteuren) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Grootboekrekening 1100 niet gevonden" });
+      if (!btwTeVorderen) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Grootboekrekening 1500 niet gevonden" });
+
+      // Fall back to 4000 if the suggested cost account doesn't exist yet
+      const costsLedger = costAccount ?? await ctx.db.query.ledgerAccounts.findFirst({
+        where: and(eq(ledgerAccounts.userId, userId), eq(ledgerAccounts.number, 4000)),
+      });
+      if (!costsLedger) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Geen kostenrekening gevonden" });
+
+      // Determine the VAT rate from line items (take the most common/highest)
+      const vatRate = data?.line_items?.[0]?.vat_rate ?? 0;
+      const vatRatePercent = vatRate > 1 ? vatRate : Math.round(vatRate * 100); // handle 0.21 and 21 both
+      const { exclVatCents, vatCents } = calculateVatSplit(totalInclVatCents, vatRatePercent as 0 | 9 | 21);
+
+      type JournalLine = { accountId: string; debit: number | null; credit: number | null };
+      let lines: JournalLine[];
+
+      if (vatTreatment === "buiten_eu") {
+        // No VAT — just cost vs crediteuren
+        lines = [
+          { accountId: costsLedger.id,   debit: totalInclVatCents, credit: null },
+          { accountId: crediteuren.id,   debit: null, credit: totalInclVatCents },
+        ];
+      } else if (vatTreatment === "nl_verlegd" || vatTreatment === "eu_diensten") {
+        if (!btwVerlegd) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Grootboekrekening 1800 niet gevonden" });
+        const vatAmount = Math.round(exclVatCents * 0.21); // self-assessed at 21%
+        lines = [
+          { accountId: costsLedger.id,    debit: exclVatCents,  credit: null },
+          { accountId: btwTeVorderen.id,  debit: vatAmount,     credit: null },
+          { accountId: btwVerlegd.id,     debit: null,          credit: vatAmount },
+          { accountId: crediteuren.id,    debit: null,          credit: exclVatCents },
+        ];
+      } else {
+        // nl_standaard
+        lines = [
+          { accountId: costsLedger.id,   debit: exclVatCents,       credit: null },
+          ...(vatCents > 0 ? [{ accountId: btwTeVorderen.id, debit: vatCents, credit: null }] : []),
+          { accountId: crediteuren.id,   debit: null,               credit: totalInclVatCents },
+        ];
+      }
+
+      const balanceCheck = lines.map(l => ({ debit: l.debit, credit: l.credit }));
+      if (!isBalanced(balanceCheck)) throw new Error("Journaalpost klopt niet");
+
+      await ctx.db.transaction(async (tx) => {
+        const [entry] = await tx
+          .insert(journalEntries)
+          .values({
+            userId,
+            date: new Date(),
+            description: `Inkoopfactuur ${invoice.invoiceNumber ?? invoice.senderCompany ?? "onbekend"}`,
+            reference: invoice.invoiceNumber ?? undefined,
+            type: "purchase_invoice",
+          })
+          .returning();
+
+        if (!entry) throw new Error("Journaalpost aanmaken mislukt");
+
+        await tx.insert(journalEntryLines).values(
+          lines.map((l) => ({
+            journalEntryId: entry.id,
+            ledgerAccountId: l.accountId,
+            debit: l.debit,
+            credit: l.credit,
+          })),
+        );
+
+        await tx
+          .update(invoices)
+          .set({ journalEntryId: entry.id, paymentStatus: "goedgekeurd" })
+          .where(eq(invoices.id, input.invoiceId));
+      });
+
+      return { ok: true, vatTreatment, costAccountNumber: costsLedger.number };
+    }),
+
+  // Book a purchase invoice into the ledger (double-entry).
+  // Creates a journaalpost with 3 lines:
+  //   DEBIT  kostenrekening     amount excl. BTW
+  //   DEBIT  BTW te vorderen    BTW amount
+  //   CREDIT crediteuren        total incl. BTW
+  bookPurchase: protectedProcedure
+    .input(
+      z.object({
+        invoiceId: z.string(),
+        ledgerAccountId: z.string(), // cost account chosen by user
+        vatRate: z.union([z.literal(0), z.literal(9), z.literal(21)]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      const invoice = await ctx.db.query.invoices.findFirst({
+        where: eq(invoices.id, input.invoiceId),
+      });
+      if (!invoice) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Factuur niet gevonden" });
+      }
+      if (invoice.journalEntryId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Factuur is al geboekt" });
+      }
+
+      // Look up the required system accounts for this tenant
+      const [crediteuren, btwTeVorderen] = await Promise.all([
+        ctx.db.query.ledgerAccounts.findFirst({
+          where: and(eq(ledgerAccounts.userId, userId), eq(ledgerAccounts.number, 1100)),
+        }),
+        ctx.db.query.ledgerAccounts.findFirst({
+          where: and(eq(ledgerAccounts.userId, userId), eq(ledgerAccounts.number, 1500)),
+        }),
+      ]);
+
+      if (!crediteuren || !btwTeVorderen) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Grootboekrekeningen 1100/1500 niet gevonden. Zijn de standaardrekeningen aangemaakt?",
+        });
+      }
+
+      const totalInclVatCents = Math.round(parseFloat(invoice.totalInclVat ?? "0") * 100);
+      const { exclVatCents, vatCents } = calculateVatSplit(totalInclVatCents, input.vatRate);
+
+      const lines = [
+        { debit: exclVatCents, credit: null },
+        ...(vatCents > 0 ? [{ debit: vatCents, credit: null }] : []),
+        { debit: null, credit: totalInclVatCents },
+      ];
+      if (!isBalanced(lines)) {
+        throw new Error(`Journaalpost klopt niet: debits en credits zijn ongelijk`);
+      }
+
+      await ctx.db.transaction(async (tx) => {
+        const [entry] = await tx
+          .insert(journalEntries)
+          .values({
+            userId,
+            date: new Date(),
+            description: `Inkoopfactuur ${invoice.invoiceNumber ?? invoice.senderCompany ?? "onbekend"}`,
+            reference: invoice.invoiceNumber ?? undefined,
+            type: "purchase_invoice",
+          })
+          .returning();
+
+        if (!entry) throw new Error("Journaalpost aanmaken mislukt");
+
+        const accountIds = [
+          input.ledgerAccountId,
+          ...(vatCents > 0 ? [btwTeVorderen.id] : []),
+          crediteuren.id,
+        ];
+        await tx.insert(journalEntryLines).values(
+          lines.map((line, i) => ({
+            journalEntryId: entry.id,
+            ledgerAccountId: accountIds[i]!,
+            debit: line.debit,
+            credit: line.credit,
+          })),
+        );
+
+        await tx
+          .update(invoices)
+          .set({ journalEntryId: entry.id, paymentStatus: "goedgekeurd" })
+          .where(eq(invoices.id, input.invoiceId));
+      });
+
+      return { ok: true };
     }),
 });
 

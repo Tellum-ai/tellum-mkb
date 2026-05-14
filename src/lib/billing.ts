@@ -48,14 +48,6 @@ export const PLANS = {
 export type PlanId = keyof typeof PLANS;
 export type BillingCycle = "monthly" | "yearly";
 
-export function formatMollieAmount(cents: number): string {
-  return (cents / 100).toFixed(2);
-}
-
-export function getMollieInterval(cycle: BillingCycle): string {
-  return cycle === "monthly" ? "1 month" : "12 months";
-}
-
 export function getTrialEndDate(startDate: Date = new Date()): Date {
   const end = new Date(startDate);
   end.setDate(end.getDate() + TRIAL_DAYS);
