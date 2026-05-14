@@ -1,0 +1,14 @@
+{
+  "emailFile": "004-github-maart.eml",
+  "wasInvoice": true,
+  "supplier": "GitHub",
+  "invoiceNumber": "GH-20260301-77821",
+  "invoiceDate": "2026-03-01",
+  "totalInclVat": "44.00",
+  "totalExclVat": "44.00",
+  "vatAmount": "0.00",
+  "vatRate": 0,
+  "vatType": "verlegd",
+  "currency": "USD",
+  "language": "en"
+}

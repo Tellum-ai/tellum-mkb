@@ -1,0 +1,14 @@
+{
+  "emailFile": "001-kpn-april.eml",
+  "wasInvoice": true,
+  "supplier": "KPN B.V.",
+  "invoiceNumber": "KPN-2026-04-001234",
+  "invoiceDate": "2026-04-01",
+  "totalInclVat": "54.45",
+  "totalExclVat": "45.00",
+  "vatAmount": "9.45",
+  "vatRate": 21,
+  "vatType": "standard",
+  "currency": "EUR",
+  "language": "nl"
+}

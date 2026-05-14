@@ -1,0 +1,14 @@
+{
+  "emailFile": "002-transip-maart.eml",
+  "wasInvoice": true,
+  "supplier": "TransIP B.V.",
+  "invoiceNumber": "F2026030892",
+  "invoiceDate": "2026-03-15",
+  "totalInclVat": "48.38",
+  "totalExclVat": "39.98",
+  "vatAmount": "8.40",
+  "vatRate": 21,
+  "vatType": "standard",
+  "currency": "EUR",
+  "language": "nl"
+}

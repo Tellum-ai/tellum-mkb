@@ -1,0 +1,14 @@
+{
+  "emailFile": "003-vercel-april.eml",
+  "wasInvoice": true,
+  "supplier": "Vercel",
+  "invoiceNumber": "INV-2026-04-0044129",
+  "invoiceDate": "2026-04-01",
+  "totalInclVat": "20.00",
+  "totalExclVat": "20.00",
+  "vatAmount": "0.00",
+  "vatRate": 0,
+  "vatType": "verlegd",
+  "currency": "USD",
+  "language": "en"
+}

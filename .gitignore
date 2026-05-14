@@ -44,6 +44,3 @@ yarn-error.log*
 
 # idea files
 .idea
-
-# inbox generator output (reviewed fixtures are committed, raw output is not)
-/scripts/generate-inbox/output/
